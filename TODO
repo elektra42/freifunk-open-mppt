@@ -1,0 +1,22 @@
+
+Hardware:
+
+* Some component values are subject to change to adjust MPP range and output
+  voltage
+
+* Handle bias voltage of OP-AMP.
+
+* Schematic has undergone some changes that didn't go in the PCB yet.
+
+* Current design is for  VRLA 12 V battery
+
+Software:
+
+* Make communication via serial port bidirectional
+
+* Make certain settings configurable via serial
+
+* Send data from MPPT to the router only on demand
+
+* Add sleep states
+

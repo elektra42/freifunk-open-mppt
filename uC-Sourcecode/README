@@ -1,0 +1,16 @@
+These files are for AVR-GCC. 
+
+USE:
+
+* Run 
+$ make 
+to compile
+
+* Run 
+$ make program
+to write into the uC.
+
+Programmer is set to avr-dragon by default. You can change this in the
+Makefile. 
+
+NOTE: You have to program the ATMega 8 fuses first.

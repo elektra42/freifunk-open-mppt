@@ -1,0 +1,11 @@
+Etching the board yourself
+++++++++++++++++++++++++++
+
+This is cheap and fun and you don't have to wait for the pcb manufacturer to make your board.
+
+The back side of the pcb is ground. I haven't filled the backside with copper yet. You can make a DIY 2-layer copy of the pcb board by etching only the top side. If you do that, you have to manually remove the copper around the pin holes of the pin headers that aren't connected to the ground on the back side of the pcb. You can do that manually with a relatively large drill by hand. Drill the small holes (0,8mm diameter), then use the large drill to cut away the copper by hand. 
+
+The GND pins of the pin headers need to be soldered on the top and the bottom. The other pins need to be soldered at the top.
+
+On the two protoype boards that I'm currently testing and experimenting with, I made the vias by drilling holes and soldering wire bridges to both sides.
+

@@ -1,0 +1,10 @@
+TODO:
+
+The status of the project is working prototype software and hardware.
+
+Schematic and PCB layout are currently not in sync, as I'm currently in the process of making some changes in the schematic.
+
+I have etched two prototypes with the previous version of the schematic. They have been working straight away, but I'm currently testing/making some minor changes before I'm going into production.
+
+The back side of the pcb is massive copper, minus a few mils of insulation around the non-GND pins of the pin headers. I haven't filled the back side with copper yet.
+
