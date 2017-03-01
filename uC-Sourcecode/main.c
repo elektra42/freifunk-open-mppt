@@ -21,7 +21,7 @@
 
 #include <avr/io.h>
 #include <stdlib.h>
-#include <util/delay.h>
+//#include <util/delay.h>
 #include <avr/sleep.h>
 #include <avr/interrupt.h>
 
@@ -52,6 +52,7 @@
     uint16_t lower_mpp_current_value;
     uint16_t medium_mpp_current_value;
     uint8_t step = 0x5; // Three point measurement step size
+    volatile uint16_t ticks = 0;
     
 
 /* ADC init */
@@ -177,13 +178,37 @@ void low_voltage_disconnect (uint16_t voltage)
                     
     }
 
+    /* Sleep based on counter */
+void interrupt_based_sleep (void)
+{
+  
+  TIFR |= (1<<TOV2);
+  // enable counter2 overflow interrupt
+  TIMSK |= (1<<TOIE2);
+  // Set counter2 to zero
+  TCNT2 = 0x00;
+  sei();
+  //uart_puts (vo);
+  //uart_puts ("\r\n");
+  
+  set_sleep_mode(SLEEP_MODE_IDLE);
+  sleep_enable();
+  sleep_mode();
+  cli();
+}
+
+/* ISR TIMER2 overflow routine */
+ISR(TIMER2_OVF_vect) {
+  return;
+}
+    
+    
 /* Measure output current */
 uint16_t current_out(void)
 
     {   
 	// wait until the current tracking point setting has settled before measurement
-        _delay_ms(10);
-      
+	interrupt_based_sleep();
 	/* Measure output current 
 	 * In order to measure current with the OP-Amp differential amplifier
 	 * we need to know the OP-Amp output voltage at zero current 
@@ -235,8 +260,8 @@ void threepointmpp(void)
 	// Decrease PWM setting by two steps, measure lower input voltage */ 
         OCR1A -= (2 * step);
 	
-	// Because we go two steps down, give some extra time to settle
-        _delay_ms(20);
+	// Give some extra time to settle
+        interrupt_based_sleep();
 	
 	// Measure current of lower input voltage
         lower_mpp_current_value = current_out();
@@ -319,32 +344,28 @@ void threepointmpp(void)
 		    
                 }
                 
-/* Prepare sleep based on counter */
-void interrupt_based_sleep (void)
-{
-  //ACSR = 0x80;
-  TIFR   = (1<<TOV2);
-  TCCR2 |= ( 1<<CS02 )| ( 0<<CS01)| ( 1<<CS00 );  // Use counter2, set prescaler to 1024
-  TIMSK |= ( 1<<TOIE2 ); // enable counter2 overflow interrupt
-  sei();                 // Gobally enable interrupts
-  TCNT2 = 0x00;          // Set counter2 to zero 
-  OCR2 = 0;              // Dummyzugriff
-  set_sleep_mode(SLEEP_MODE_IDLE);
-  sleep_enable();
-  sleep_mode();   
-}
 
 
 int main(void)
 {
     
-    DDRD  = (1<<PD7); 
+    // Set up GPIOs PD7 and PB1 as output ports
+    DDRD  = (1<<PD7);
+    DDRB = (1<<PB1);
+    
+    // Enable ADC
     ADC_Init();
+    
+    // Set up PWM1 to control refence voltage of OP-AMP
     TCCR1A|=(1<<COM1A1)|(0<<COM1A0)|(0<<WGM13)|(1<<WGM12)|(1<<WGM11)|(1<<WGM10);
     TCCR1B|=(1<<CS10);
     ICR1=0x3ff;
     OCR1A = 0x100;
-    DDRB = (1<<PB1);
+    
+    // Enable Timer/Counter2 to generate interrups for timer based sleep
+    TCCR2 |= ( 1<<CS02 )| ( 1<<CS01)| ( 1<<CS00 );  // Use counter2, set prescaler to 1024
+    
+    
     
 
 
@@ -375,12 +396,11 @@ int main(void)
 		}
 		
 		else { 
-		 // _delay_ms(15000);
-		  volatile uint16_t bigcounter = 0;
+		 ticks = 0;
 		  
-		while (bigcounter != 210) {
+		while (ticks != 213) {
                       interrupt_based_sleep();
-		      bigcounter ++;
+		      ticks ++;
                   }
 		}
 		  
