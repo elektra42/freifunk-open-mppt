@@ -1,5 +1,5 @@
 These are preliminary sources and CAD files from the
-Freifunk-Open-MPP-Tracker project.
+Freifunk-Open-MPP-Tracker project. 
 
 
 <b>SOME LICENSE-FOO:</b>
@@ -11,18 +11,18 @@ For more information, check out the LICENSE file.
 
 <b>A QUICK OVERVIEW OF THE DIRECTORIES:</b>
 
-AVR-FUSES:
+<b>AVR-FUSES:</b><br>
 Contains a XML configuration file to program the fuses of the AVR. I am
 using the AVR dragon board and AVR-Burn-O-Mat software to program the fuses.
 
-SCHEMATIC AND BOARD:
+<b>SCHEMATIC AND BOARD:</b><br>
 Electronic CAD files and component libraries, made with KiCAD. KiCAD is a free and
 open ECAD tool.  Due to the intend to provide a open hardware and open
 software project for DIY home-brewers, I have decided to use a free and open
 source ECAD software tool, too. It is my first project with KiCAD, though.
 
 
-uC-SOURCECODE:
+<b>µC-SOURCECODE:</b><br>
 AVR-GCC source and Makefile. 
 
 
