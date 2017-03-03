@@ -3,6 +3,7 @@ Freifunk-Open-MPP-Tracker project.
 
 
 SOME LICENSE-FOO:
+
 This is a Open-Source and Open-Hardware project under General Public License
 v2 and Creative Commons - Attribution - ShareAlike 3.0.
 For more information, check out the LICENSE file.
@@ -10,22 +11,22 @@ For more information, check out the LICENSE file.
 
 A QUICK OVERVIEW OF THE DIRECTORIES:
 
-AVR-FUSES
+AVR-FUSES:
 Contains a XML configuration file to program the fuses of the AVR. I am
 using the AVR dragon board and AVR-Burn-O-Mat software to program the fuses.
 
-SCHEMATIC AND BOARD
+SCHEMATIC AND BOARD:
 Electronic CAD files and component libraries, made with KiCAD. KiCAD is a free and
 open ECAD tool.  Due to the intend to provide a open hardware and open
 software project for DIY home-brewers, I have decided to use a free and open
 source ECAD software tool, too. It is my first project with KiCAD, though.
 
 
-uC-SOURCECODE
+uC-SOURCECODE:
 AVR-GCC source and Makefile. 
 
 
-SOME NOTES ABOUT THIS DESIGN
+SOME NOTES ABOUT THIS DESIGN:
 
 Basically this hardware has two building blocks: 
 The MPP controller section and the buck converter.
