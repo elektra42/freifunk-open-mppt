@@ -2,14 +2,14 @@ These are preliminary sources and CAD files from the
 Freifunk-Open-MPP-Tracker project.
 
 
-SOME LICENSE-FOO:
+<b>SOME LICENSE-FOO:</b>
 
 This is a Open-Source and Open-Hardware project under General Public License
 v2 and Creative Commons - Attribution - ShareAlike 3.0.
 For more information, check out the LICENSE file.
 
 
-A QUICK OVERVIEW OF THE DIRECTORIES:
+<b>A QUICK OVERVIEW OF THE DIRECTORIES:</b>
 
 AVR-FUSES:
 Contains a XML configuration file to program the fuses of the AVR. I am
@@ -26,7 +26,7 @@ uC-SOURCECODE:
 AVR-GCC source and Makefile. 
 
 
-SOME NOTES ABOUT THIS DESIGN:
+<b>SOME NOTES ABOUT THIS DESIGN:</b>
 
 Basically this hardware has two building blocks: 
 The MPP controller section and the buck converter.
