@@ -21,7 +21,7 @@
 
 #include <avr/io.h>
 #include <stdlib.h>
-//#include <util/delay.h>
+#include <util/delay.h>
 #include <avr/sleep.h>
 #include <avr/interrupt.h>
 
@@ -44,14 +44,16 @@
     uint16_t solar_in_adcval;
     uint16_t v_in_value;
     uint16_t current_out_adcval;
-    uint16_t value;
+    uint16_t v_out_value;
     uint16_t u_zero_current;
     char vo[] = "";
     uint8_t duty;
     uint16_t upper_mpp_current_value;
     uint16_t lower_mpp_current_value;
     uint16_t medium_mpp_current_value;
-    uint8_t step = 0x5; // Three point measurement step size
+    uint16_t v_out_max = 14900;
+    uint16_t v_mpp_estimate = 0;
+    uint8_t step = 0x2; // Three point measurement step size
     volatile uint16_t ticks = 0;
     
 
@@ -156,7 +158,7 @@ void uart_puts(char *s)
 /* Low voltage disconnect */                    
 void low_voltage_disconnect (uint16_t voltage)
     {
-        // Battery voltage level that enables load in mV            
+        // Battery voltage level that enables load in mV
         if (voltage > 12300) 
         { 
         PORTD = (1<<PD7) ;
@@ -178,29 +180,28 @@ void low_voltage_disconnect (uint16_t voltage)
                     
     }
 
-    /* Sleep based on counter */
+/* Power saving sleep routine based on counter/timer2 
+ * Sleep (idle) time with 3.684 MHz clock is 70.6ms */
 void interrupt_based_sleep (void)
-{
+	{
   
-  TIFR |= (1<<TOV2);
-  // enable counter2 overflow interrupt
-  TIMSK |= (1<<TOIE2);
-  // Set counter2 to zero
-  TCNT2 = 0x00;
-  sei();
-  //uart_puts (vo);
-  //uart_puts ("\r\n");
-  
-  set_sleep_mode(SLEEP_MODE_IDLE);
-  sleep_enable();
-  sleep_mode();
-  cli();
-}
+	TIFR |= (1<<TOV2);
+	// enable counter2 overflow interrupt
+	TIMSK |= (1<<TOIE2);
+	// Set counter2 to zero
+	TCNT2 = 0x00;
+	sei();  
+	set_sleep_mode(SLEEP_MODE_IDLE);
+	sleep_enable();
+	sleep_mode();
+	cli();
+	}
 
 /* ISR TIMER2 overflow routine */
-ISR(TIMER2_OVF_vect) {
-  return;
-}
+ISR(TIMER2_OVF_vect)
+      {
+      return;
+      }
     
     
 /* Measure output current */
@@ -208,7 +209,7 @@ uint16_t current_out(void)
 
     {   
 	// wait until the current tracking point setting has settled before measurement
-	interrupt_based_sleep();
+	_delay_ms(12);
 	/* Measure output current 
 	 * In order to measure current with the OP-Amp differential amplifier
 	 * we need to know the OP-Amp output voltage at zero current 
@@ -220,110 +221,55 @@ uint16_t current_out(void)
 	// Use ADC channel 0 (V_out) and average for N (10) measurements
         v_out_adcval = ADC_Read_Avg(0, 10);
 	// Take the voltage divider ratio into account and calculate actual output voltage in mV
-        value = (17.57 * v_out_adcval); 
+        v_out_value = (17.57 * v_out_adcval); 
                 
 	// Take the voltage divider ratio into account and calculate voltage at zero current
 	// The values depend on the voltage divider ratio (1.5) and Zener diode voltage drop
-        u_zero_current = ((value / 1.5) - 6200) / 2;
+	
+	// Old board:
+        //u_zero_current = ((value / 1.5) - 6200) / 2;
+	
+	// 1.455 divider ratio OP-AMP input voltage divider
+	// Divider ratio at Atmega8 ADC input for 15k/ 69k voltage divider
+	
+	u_zero_current = (v_out_value / 1.455) / 4.77 ;
 	
 	// Perform measurement. Use ADC channel 1 (V_out) and average for N measurements
         current_out_adcval = ADC_Read_Avg(1,32);
 	
 	// Calculate actual output current in mA
-	uint16_t current_value = ((current_out_adcval * 3.1738) - u_zero_current) * 1.3 ;
+	uint16_t current_value = ((current_out_adcval * 3.1738) - u_zero_current) * 1.342 ;
 	return current_value;
     }            
 
-/* Three point maximum power point detection routine */
-void threepointmpp(void)
 
-    {
-	/* handle Vmpp input overrun */
-        if  (OCR1A >= 0x3ff - (2 * step)) 
-        {
-            OCR1A = 0x100;
-        }
-        
-        
-        /* Measure current of currently set maximum power point */ 
-        medium_mpp_current_value = current_out(); 
-        
-        /* Now increase the uC controlled reference voltage of the OP-Amp via fast PWM,
-	 * which results in a higher solar input voltage */
-    
-	// Increase PWM setting, so power point goes up
-        OCR1A += step;
-	
-	/* Measure current of higher input voltage */
-        upper_mpp_current_value = current_out();
-	
-	// Decrease PWM setting by two steps, measure lower input voltage */ 
-        OCR1A -= (2 * step);
-	
-	// Give some extra time to settle
-        interrupt_based_sleep();
-	
-	// Measure current of lower input voltage
-        lower_mpp_current_value = current_out();
-
-    
-	/* Now determine the next maximum power point */
-	
-	/* Check if all measured power points actually did yield the same results 
-	 * which means the measurement is undetermined.
-	 * If true, slowly increase the MPP input voltage by a small increment 
-	 * until we come to a point where it actually *does* make a difference */
-	
-        if (upper_mpp_current_value == lower_mpp_current_value && medium_mpp_current_value == lower_mpp_current_value)
-            {
-                OCR1A += step +1;
-            }
-        
-	    /* If true, we actually have the upper mpp voltage value as new max point */
-	    
-            else if (upper_mpp_current_value > medium_mpp_current_value)
-            {
-                OCR1A += (2 * step);
-            }
-            
-	    /* If true, we actually keep the previous mpp voltage value as max point */
-        
-            else if (medium_mpp_current_value >= lower_mpp_current_value &&  medium_mpp_current_value >= upper_mpp_current_value)
-            {
-                OCR1A += step;
-            } 
-            
-            /* If true, we take the lower mpp voltage value as new max point */
-            
-            else if (medium_mpp_current_value < lower_mpp_current_value)
-            {
-                OCR1A -= step - 1;
-            } 
-    } 
                 
                 
     void serialdatareport (void)
-    {		
+    {
+		    // Experiment: Prevent serial data from getting garbled.
+		    _delay_ms(20);
 		    // Prepare UART for sending data 
 		    uart_tx_enable();
 		    // Read ADC channel 2, calculate average from 10 readings
-                    solar_in_adcval = ADC_Read_Avg(2, 10);  
+                    solar_in_adcval = ADC_Read_Avg(2, 32);  
                     v_in_value = (29.13 * solar_in_adcval);
-                    uart_puts("U_in ");
+                    uart_puts("V_in ");
 		    // convert to ascii using 10 for radix 10 -> decimalsystem
                     itoa( v_in_value, vo, 10 ); 
                     uart_puts( vo );
                     uart_puts(" mV""\r\n");
                     
-                    v_out_adcval = ADC_Read_Avg(0, 10); 
-                    value = (17.57 * v_out_adcval);
-                    uart_puts("U_out "); 
-                    itoa( value, vo, 10 ); 
+                    v_out_adcval = ADC_Read_Avg(0, 32); 
+                    v_out_value = (17.57 * v_out_adcval);
+                    uart_puts("V_out "); 
+                    itoa( v_out_value, vo, 10 ); 
                     uart_puts( vo );
                     uart_puts(" mV""\r\n");
                     
-                    u_zero_current = ((value / 1.5) - 6200) / 2;
-                    uart_puts( "U_zero_current ");
+		    u_zero_current = (v_out_value / 1.455) / 5.6 ;
+		    
+                    uart_puts( "V_zero_current ");
                     itoa( u_zero_current, vo, 10 );
                     uart_puts( vo );
                     uart_puts(" mV""\r\n"); 
@@ -360,7 +306,7 @@ int main(void)
     TCCR1A|=(1<<COM1A1)|(0<<COM1A0)|(0<<WGM13)|(1<<WGM12)|(1<<WGM11)|(1<<WGM10);
     TCCR1B|=(1<<CS10);
     ICR1=0x3ff;
-    OCR1A = 0x100;
+    OCR1A = 0xf0;
     
     // Enable Timer/Counter2 to generate interrups for timer based sleep
     TCCR2 |= ( 1<<CS02 )| ( 1<<CS01)| ( 1<<CS00 );  // Use counter2, set prescaler to 1024
@@ -372,42 +318,99 @@ int main(void)
         while (1) {
             
 		/* Measure battery voltage and call low voltage disconnect check */
-                 v_out_adcval = ADC_Read_Avg(0, 10); 
-                 value = (17.57 * v_out_adcval);
-                 low_voltage_disconnect(value);
+                 v_out_adcval = ADC_Read_Avg(0, 32); 
+                 v_out_value = (17.57 * v_out_adcval);
+                 low_voltage_disconnect(v_out_value);
+		 
+		 uart_puts("Parsed low voltage disconnect"); 
+		 uart_puts ("\r\n");
+		 
+		 
+		 
+		 /* Stop charging at 14.9 Volt */
+		 
+		 if (v_out_value > v_out_max) {
+		   
+		   uart_puts("If condition true, v_out >");
+		   itoa(v_out_max, vo, 10 );
+		   uart_puts(vo);
+		    while (v_out_value > v_out_max) {
+		      OCR1A += 1;
+		      _delay_ms(10);
+		      v_out_adcval = ADC_Read_Avg(0, 32);
+		      v_out_value = (17.57 * v_out_adcval); 
+		      uart_puts("While loop, v_out greater v_out_max");
+		      uart_puts ("\r\n");
+		      }	   
+		  _delay_ms(1000);
+		}
+		 
+		 else {
 		 
 		 /* Measure solar input voltage */ 
-		 solar_in_adcval = ADC_Read_Avg(2, 10);  
+		 solar_in_adcval = ADC_Read_Avg(2, 32);  
                  v_in_value = (29.13 * solar_in_adcval);
 		 
-		/* Check if there is actually power from the solar panel
-		 * if not, skip running the three point MPP loop and 
-		 * sleep for a while */
+		/* Check if there is actually power from the solar panel.
+		 * If not, sleep for a while */
 		
-		if (value < v_in_value) {
-                 /* Run three point MPP measurement loop n times */
-                 
-                 int counter = 0;
-                 while (counter != 200) {
-                      
-                                threepointmpp ();
-                                counter ++;
-                  }
-		}
-		
-		else { 
-		 ticks = 0;
+		if (v_out_value < v_in_value) {
+
+		  OCR1A = 0x355;
+		  _delay_ms(2000);
+		  solar_in_adcval = ADC_Read_Avg(2, 32);
+		  v_in_value = (29.13 * solar_in_adcval);
+		  uart_puts("V_in_idle "); 
+		  itoa( v_in_value, vo, 10 ); 
+		  uart_puts( vo );
+		  uart_puts(" mV""\r\n");
+		  v_mpp_estimate = v_in_value / 1.31;
 		  
-		while (ticks != 213) {
+		  OCR1A = 0x0;
+		  _delay_ms(1000);
+		  solar_in_adcval = ADC_Read_Avg(2, 32);
+		  v_in_value = (29.13 * solar_in_adcval);
+		  
+		  uart_puts("Calculated V_mpp "); 
+		  itoa( v_mpp_estimate, vo, 10 ); 
+		  uart_puts( vo );
+		  uart_puts(" mV""\r\n");
+		  
+		  while (v_in_value < v_mpp_estimate) {
+		    
+		    _delay_ms(10);
+		    solar_in_adcval = ADC_Read_Avg(2, 32);
+		    v_in_value = (29.13 * solar_in_adcval);
+		    OCR1A += step;
+		  }
+		  
+		 serialdatareport();
+		 
+                
+		ticks = 0;
+		uart_puts("Going to sleep. MPP should be set");
+		uart_puts ("\r\n");
+		while (ticks != 6000) {
+                      interrupt_based_sleep();
+		      ticks ++;
+                
+		}
+		  }
+		
+		else {
+		serialdatareport();
+		ticks = 0;
+		uart_puts("Going to sleep, input voltage too low");
+		uart_puts ("\r\n");
+		while (ticks != 6000) {
                       interrupt_based_sleep();
 		      ticks ++;
                   }
-		}
-		  
-                /* Send serial data
-                Todo: Do so on demand, after call from router in order to avoid accidently stopping the bootloader */
                 
-                serialdatareport();
+		}
+		
+		}
+		
             }
 
    return 0; // never reached 
