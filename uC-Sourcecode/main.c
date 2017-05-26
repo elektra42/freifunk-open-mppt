@@ -33,7 +33,7 @@
 #endif
 
 /* Define baud rate for serial port */
-#define BAUD 115200UL
+#define BAUD 9600UL
 
 /* Calculate UART BAUD register setting */
 #define UBRR_SETTING ((F_CPU+BAUD*8)/(BAUD*16)-1)
@@ -51,9 +51,9 @@
     uint16_t upper_mpp_current_value;
     uint16_t lower_mpp_current_value;
     uint16_t medium_mpp_current_value;
-    uint16_t v_out_max = 14900;
+    uint16_t v_out_max = 14700;
     uint16_t v_mpp_estimate = 0;
-    uint8_t step = 0x2; // Three point measurement step size
+    uint8_t step = 0x1; // Three point measurement step size
     volatile uint16_t ticks = 0;
     
 
@@ -171,11 +171,11 @@ void low_voltage_disconnect (uint16_t voltage)
                     
         if (PORTD == (1<<PD7))
         {
-        uart_puts("Load enabled\r\n\n");
+        uart_puts("Load enabled\r\n");
         }
         else 
         {
-        uart_puts("Load disabled\r\n\n");
+        uart_puts("Load disabled\r\n");
         }
                     
     }
@@ -203,45 +203,6 @@ ISR(TIMER2_OVF_vect)
       return;
       }
     
-    
-/* Measure output current */
-uint16_t current_out(void)
-
-    {   
-	// wait until the current tracking point setting has settled before measurement
-	_delay_ms(12);
-	/* Measure output current 
-	 * In order to measure current with the OP-Amp differential amplifier
-	 * we need to know the OP-Amp output voltage at zero current 
-	 * We calculate that from output voltage */
-        
-	
-	/* Measure output voltage */
-	
-	// Use ADC channel 0 (V_out) and average for N (10) measurements
-        v_out_adcval = ADC_Read_Avg(0, 10);
-	// Take the voltage divider ratio into account and calculate actual output voltage in mV
-        v_out_value = (17.57 * v_out_adcval); 
-                
-	// Take the voltage divider ratio into account and calculate voltage at zero current
-	// The values depend on the voltage divider ratio (1.5) and Zener diode voltage drop
-	
-	// Old board:
-        //u_zero_current = ((value / 1.5) - 6200) / 2;
-	
-	// 1.455 divider ratio OP-AMP input voltage divider
-	// Divider ratio at Atmega8 ADC input for 15k/ 69k voltage divider
-	
-	u_zero_current = (v_out_value / 1.455) / 4.77 ;
-	
-	// Perform measurement. Use ADC channel 1 (V_out) and average for N measurements
-        current_out_adcval = ADC_Read_Avg(1,32);
-	
-	// Calculate actual output current in mA
-	uint16_t current_value = ((current_out_adcval * 3.1738) - u_zero_current) * 1.342 ;
-	return current_value;
-    }            
-
 
                 
                 
@@ -266,20 +227,6 @@ uint16_t current_out(void)
                     itoa( v_out_value, vo, 10 ); 
                     uart_puts( vo );
                     uart_puts(" mV""\r\n");
-                    
-		    u_zero_current = (v_out_value / 1.455) / 5.6 ;
-		    
-                    uart_puts( "V_zero_current ");
-                    itoa( u_zero_current, vo, 10 );
-                    uart_puts( vo );
-                    uart_puts(" mV""\r\n"); 
-                    
-                    
-                    medium_mpp_current_value = current_out();
-                    uart_puts("I_out "); 
-                    itoa(medium_mpp_current_value, vo, 10 );
-                    uart_puts( vo );
-                    uart_puts(" mA""\r\n");
                 
                     uart_puts ("New PWM value: 0x");
                     itoa(OCR1A, vo, 16 );
@@ -290,6 +237,30 @@ uint16_t current_out(void)
 		    
                 }
                 
+
+     void charge_end_limit (void) 
+      {
+		 /* Stop charging at V_out_max */
+		 
+		 /* Measure battery voltage */
+		 v_out_adcval = ADC_Read_Avg(0, 32); 
+                 v_out_value = (17.57 * v_out_adcval);
+		 
+		 if (v_out_value > v_out_max) {
+		 uart_puts("V_out at charge end voltage > ");
+		 itoa(v_out_max, vo, 10 );
+		 uart_puts(vo);
+		 uart_puts ("mV\r\n");
+		   
+		 while (v_out_value > v_out_max) {
+		    OCR1A += 1;
+		    _delay_ms(200);
+		    v_out_adcval = ADC_Read_Avg(0, 32);
+		    v_out_value = (17.57 * v_out_adcval); 
+		    }
+		  _delay_ms(5000);
+	    }
+      }
 
 
 int main(void)
@@ -311,106 +282,89 @@ int main(void)
     // Enable Timer/Counter2 to generate interrups for timer based sleep
     TCCR2 |= ( 1<<CS02 )| ( 1<<CS01)| ( 1<<CS00 );  // Use counter2, set prescaler to 1024
     
-    
+    _delay_ms(200);
     
 
 
         while (1) {
-            
-		/* Measure battery voltage and call low voltage disconnect check */
-                 v_out_adcval = ADC_Read_Avg(0, 32); 
-                 v_out_value = (17.57 * v_out_adcval);
+	  
                  low_voltage_disconnect(v_out_value);
-		 
-		 uart_puts("Parsed low voltage disconnect"); 
+		 uart_puts("Parsed low voltage disconnect routine"); 
 		 uart_puts ("\r\n");
 		 
+		 charge_end_limit();
 		 
-		 
-		 /* Stop charging at 14.9 Volt */
-		 
-		 if (v_out_value > v_out_max) {
-		   
-		   uart_puts("If condition true, v_out >");
-		   itoa(v_out_max, vo, 10 );
-		   uart_puts(vo);
-		    while (v_out_value > v_out_max) {
-		      OCR1A += 1;
-		      _delay_ms(10);
-		      v_out_adcval = ADC_Read_Avg(0, 32);
-		      v_out_value = (17.57 * v_out_adcval); 
-		      uart_puts("While loop, v_out greater v_out_max");
-		      uart_puts ("\r\n");
-		      }	   
-		  _delay_ms(1000);
-		}
-		 
-		 else {
-		 
-		 /* Measure solar input voltage */ 
-		 solar_in_adcval = ADC_Read_Avg(2, 32);  
-                 v_in_value = (29.13 * solar_in_adcval);
 		 
 		/* Check if there is actually power from the solar panel.
 		 * If not, sleep for a while */
+		/* First, measure solar input voltage */
 		
-		if (v_out_value < v_in_value) {
-
-		  OCR1A = 0x355;
-		  _delay_ms(2000);
+		 solar_in_adcval = ADC_Read_Avg(2, 32);  
+                 v_in_value = (29.13 * solar_in_adcval);
+		
+		if ((v_out_value < v_in_value) && (v_out_value < (v_out_max - 100))) {
+		  
+		  OCR1A = 0x354;
+		  _delay_ms(400);
 		  solar_in_adcval = ADC_Read_Avg(2, 32);
 		  v_in_value = (29.13 * solar_in_adcval);
 		  uart_puts("V_in_idle "); 
 		  itoa( v_in_value, vo, 10 ); 
 		  uart_puts( vo );
 		  uart_puts(" mV""\r\n");
-		  v_mpp_estimate = v_in_value / 1.31;
+		  v_mpp_estimate = v_in_value / 1.24;
 		  
 		  OCR1A = 0x0;
-		  _delay_ms(1000);
+		  _delay_ms(200);
 		  solar_in_adcval = ADC_Read_Avg(2, 32);
 		  v_in_value = (29.13 * solar_in_adcval);
+		  uart_puts("Minimum V_mpp "); 
+		  itoa( v_in_value, vo, 10 ); 
+		  uart_puts( vo );
+		  uart_puts(" mV""\r\n");
 		  
 		  uart_puts("Calculated V_mpp "); 
 		  itoa( v_mpp_estimate, vo, 10 ); 
 		  uart_puts( vo );
 		  uart_puts(" mV""\r\n");
 		  
-		  while (v_in_value < v_mpp_estimate) {
+		  while ((v_in_value < v_mpp_estimate) && (v_out_value < v_out_max))  {
 		    
-		    _delay_ms(10);
+		    OCR1A += step;
+		    _delay_ms(1);
 		    solar_in_adcval = ADC_Read_Avg(2, 32);
 		    v_in_value = (29.13 * solar_in_adcval);
-		    OCR1A += step;
-		  }
-		  
-		 serialdatareport();
-		 
-                
+		    
+		    /* Measure battery voltage */
+		    v_out_adcval = ADC_Read_Avg(0, 32); 
+		    v_out_value = (17.57 * v_out_adcval);
+		    }
+		
 		ticks = 0;
 		uart_puts("Going to sleep. MPP should be set");
 		uart_puts ("\r\n");
-		while (ticks != 6000) {
-                      interrupt_based_sleep();
+		while (ticks != 200) {
+		      interrupt_based_sleep();
+		      charge_end_limit();
 		      ticks ++;
                 
 		}
 		  }
 		
-		else {
-		serialdatareport();
+		if (v_out_value > v_in_value)
+		{
 		ticks = 0;
 		uart_puts("Going to sleep, input voltage too low");
 		uart_puts ("\r\n");
-		while (ticks != 6000) {
+		while (ticks != 200) {
                       interrupt_based_sleep();
 		      ticks ++;
                   }
                 
 		}
-		
-		}
-		
+		charge_end_limit();
+		serialdatareport();
+		_delay_ms(5000);
             }
 
    return 0; // never reached 

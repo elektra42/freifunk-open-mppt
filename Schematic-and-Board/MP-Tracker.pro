@@ -1,4 +1,4 @@
-update=Do 03 Nov 2016 21:06:35 CET
+update=Mo 27 Feb 2017 15:29:16 CET
 last_client=kicad
 [eeschema]
 version=1
@@ -37,3 +37,13 @@ LibName30=contrib
 LibName31=valves
 [general]
 version=1
+[schematic_editor]
+version=1
+PageLayoutDescrFile=
+PlotDirectoryName=
+SubpartIdSeparator=0
+SubpartFirstId=65
+NetFmtName=
+SpiceForceRefPrefix=0
+SpiceUseNetNumbers=0
+LabSize=60
