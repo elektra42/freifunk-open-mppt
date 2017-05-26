@@ -1,0 +1,120 @@
+*****************************************************
+* How to flash/update the Freifunk-Open-MPP-Tracker *
+*****************************************************
+
+Whenever you power up the Freifunk-Open-MPP-Tracker, it will wait 15 seconds
+for the upload of a new firmware via the serial port.  So you can flash the
+Freifunk-Open-MPPT without a dedicated programmer :)
+
+All you need is a 3.3 Volt level compatible serial port. Serial ports are
+now a legacy on Laptops and PCs, but there are cheap USB-serial-adapters
+available.  You will also need a serial port level shifter that is
+compatible with 3.3 Volt levels. You can get both from your hacker-friendly
+electronics store.
+
+Don't connect the Freifunk-Open-MPPT directly to a standard PC serial port
+or USB-to-serial dongle without a level shifter in between, as standard
+RS-232 ports use way higher voltages than 3.3 Volt. A standard-level serial
+port will certainly destroy the Atmega8!
+
+If you are in the middle of nowhere and you can't get your hands on a serial
+port and/or level shifter, take a look at the bottom of this text.  There is
+a solution ;)
+
+
+Step one:
+*********
+
+Power off the MPPT: Disconnect it from solar panel and battery.
+
+Connect the 3.3 Volt compatible serial port to the 2 x 5 pin header with
+jumper cable.
+
+	MOSI Pin_1 * | * Pin_2  MISO
+	SCLK Pin_3 * | * Pin_4  3.3V
+	  TX Pin_5 * | * Pin_6  GND
+	  RX Pin_7 * | * Pin_8  GND
+	 RST Pin_9 * | * Pin_10 GND
+
+
+Pin #1 is the pin next to the crystal. You have to make 4 connections:
+
+	3.3 V -- 3.3 V
+	   TX -- RX
+	   RX -- TX
+	  GND -- GND
+
+Step two:
+*********
+
+Actually, we can flash the firmware with just the 'cat' command that every
+Unix-like operating systems has.  However, we need to configure the serial
+port of our PC/Laptop with the following settings beforehand:
+
+9600 baud
+8-N-1
+Software flow control (Xon/Xoff) enabled
+
+I use the program 'minicom' to set the serial parameters of the serial port
+(Linux) via the 'minicom' menu.  Then I stop minicom without resetting the
+serial port (minicom will ask if it should do that before it stops, just
+choose 'no')
+
+You can also use 'putty' or any other terminal software to set up the serial
+port and upload the firmware file.
+
+Step three:
+***********
+
+Go to the directory with the new firmware. By default, the firmware is the
+file 'main.hex'.  If you want to flash via a terminal software, select
+main.hex for upload.  The transfer protocol is ASCII. 
+
+As an alternative, type the command 
+
+cat main.hex > /dev/ttyUSB0
+
+on the command line, but don't press 'Return' yet.
+
+ttyUSB0 is the first USB to serial port in the system. If you use a
+different port, change /dev/tty-something accordingly.
+
+Step four:
+**********
+
+Power on the Freifunk-Open-MPPT by connecting it to the battery. Start the
+file-upload within 15 seconds after connecting the power.
+
+Wait until the upload is finished. Let another few seconds pass. Power-cycle
+the Freifunk-Open-MPPT again.
+
+If the communication with the device doesn't work, you might have confused
+TX and RX lines. Swap the lines and try again.
+
+Congratulations, you have just flashed a new firmware to the device!
+
+#################################################
+# I have no serial port and/or no level shifter #
+#################################################   
+
+If you have no serial port and no level shifter, you can use the 3.3 V
+serial port of a WiFi router, running OpenWRT or LEDE.  In order to use the
+serial port of the router for flashing, you have to disable the serial root
+console.  To disable the serial root console of your router, comment out the
+line
+
+::askconsole:/bin/ash --login
+
+in /etc/inittab
+
+As long as you have disabled the serial console, don't accidently
+misconfigure your router, as you can no longer log into the device via
+serial port for debugging ;)
+
+'minicom' or 'picocom' are available as a software packages for OpenWRT/LEDE.
+
+You don't have to install a terminal software, if you know how to set up the serial port
+with the 'setserial' utility, that is also available as a software package.
+
+The combination of 'setserial' and 'cat' will save precious space in the
+flash of your router ;)

@@ -1,0 +1,1 @@
+/dev/ttyUSB0 uart 16654 port 0x0000 irq 0 baud_base 460800 spd_normal

@@ -1,0 +1,33 @@
+This directory contains a compiled and ready-to-use kavr bootloader image
+that can be flashed into the Atmega8 microcontroller of the
+Freifunk-Open-MPP-Tracker.  The kavr sources are available at
+https://github.com/mrpace2/kavr
+
+
+#####################################################
+How to install the bootloader on a blank Atmega8 chip
+#####################################################
+
+Step one:
+*********
+
+You need to configure the AVR ATmega8 fuses first. Switch over to the Fuses
+directory to set the fuses with AVR-Burn-O-Mat with an ISP-programmer, or use the
+shell script in this folder.
+
+Step two:
+*********
+
+After the fuses are set, the bootloader can be flashed. There is a simple
+shell script that works with my programmer at hand (AVR
+Dragon).
+
+Simply executing
+
+./program.sh
+
+will flash the bootloader.
+
+There is now a multitude of AVR ISP-programmers.  If you use a different
+programmer, modify the script accordingly.
+

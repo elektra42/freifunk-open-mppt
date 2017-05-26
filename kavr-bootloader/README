@@ -1,0 +1,129 @@
+About this project
+==================
+
+kavr is an open source AVR boot loader written entirely in C. 
+kavr supports updating firmware by sending hexfiles to the AVR processor 
+via its serial port. A three wire (RxD, TxD, GND) serial port connection 
+is sufficient. 
+
+No special software is required on the host PC. Any serial port terminal 
+such as HyperTerminal, Minicom etc. supporting XON/XOFF work fine with 
+kavr. Even DOS commands (MODE, COPY) can be used.
+
+
+
+License
+=======
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+
+
+How kavr works
+==============
+
+kavr is an AVR boot loader. At reset, the AVR processor executes the code at 
+the reset vector. Depending on fuse settings, the reset vector points at 
+address zero (if no boot loader is used) or the reset vector points at an 
+address in upper flash memory. This is where kavr resides.
+
+kavr itself needs to be programmed into the AVR processor using a hardware 
+programmer such as any programmer supported by avrdude. Once installed, kavr 
+interrupts the boot process for a short time checking for hexfile records 
+received on the serial port. If so, kavr programs any received hexfile data
+into flash memory and then boots the new firmware application. If there are 
+no hexfile records detected on the serial port, kavr boots the old firmware 
+application as usual.
+
+
+
+How to update firmware with kavr
+================================
+
+In order to load new firmware into your board running the kavr boot loader
+you need to first generate a firmware hexfile. If not already part of your
+firmware makefile, add a command like this:
+
+    avr-objcopy -j .text -j .data -O ihex firmware.elf firmware.hex
+
+Then, connect your board with a PC using a serial port cable. Run the 
+terminal program of your choice on the PC. Configure the serial port for
+the baud rate hardcoded in your kavr boot loader and configure 8N1 protocol
+and xon/xoff (aka software) handshake. Example (DOS command prompt):
+
+    C:\>mode com1 baud=9600 DATA=8 PARITY=n STOP=1 XON=on
+
+Next, reboot your board. Before the timeout hardcoded into your kavr boot 
+loader, send your firmware hexfile to the serial port. kavr will flash the
+new firmware and then run it. Example (DOS command prompt):
+
+    C:\>copy firmware.hex com1:
+
+
+
+Roll your own kavr
+==================
+
+Are you ready to put kavr on your board? I am assuming you've got a recent 
+WinAVR installed on your development machine and that you know how to use 
+it. You will also need a hardware programmer supported by avrdude. 
+
+First, tell kavr a few things about your board (clock params, MCU type...).
+Update the first parameters in the kavr Makefile with your parameters. Here 
+you will also need to define settings for serial port baud rate and boot 
+loader timeout. Which one you choose depends on the capbilities of your board 
+and its typical firmware application. I typically use 9600 baud and 1 second
+timeout. Higher baud rates might or might not work, depending on your board's 
+clock configuration. 
+
+Then, build kavr for your board. Type "make". If there are any errors in the
+make process, go fix them. The makefile displays the amount of flash used for
+kavr (avr-size, the number under "text" matters). This number should be 
+compatible with your boot loader start address (BOOTADDR) setting in the 
+makefile and with your fuse settings. More specifically, BOOTADDR+size must 
+not exceed your flash address space. Currently the code fits into 512 bytes 
+(256 words) but this number may vary with your settings and with the compiler 
+version you are using. Always double check that kavr fits into your flash.
+
+Next, hook up your hardware programmer with your board. Run "make flash". 
+This installs kavr into the boot loader area of your board. Now, tell AVR
+to boot kavr instead of the firmware by programming its fuses for kavr mode.
+Run "make fuse". 
+
+Done! kavr should now be a happy boot loader on your system. Please note 
+that when you flash kavr, avrdude also erases your firmware image so you 
+will need to re-install your firmware.
+
+
+
+Bugs/Enhancements?
+==================
+
+kavr is open source software. It's licensed under GPL. The latest source 
+code is available on Sourceforge (http://kavr.sourceforge.net).
+Please report any problems or feedback any proposals for enhancement using
+the Sourceforge tracker system.
+
+
+
+Donate
+======
+
+If you like kavr and if you use kavr for a project that you (or your 
+employer) make money with, then you (or your employer) may want to consider 
+donating a few bucks in return.
+
+Your donation will help offsetting development costs, hardware purchases, 
+and other expenses (like travel to conferences) in support of ongoing 
+development of the software.
