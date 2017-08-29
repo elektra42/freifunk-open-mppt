@@ -51,10 +51,19 @@
     uint16_t upper_mpp_current_value;
     uint16_t lower_mpp_current_value;
     uint16_t medium_mpp_current_value;
-    uint16_t v_out_max = 14700;
+    
+    /* Voltages are in mV */
+    uint16_t v_out_max = 14200; //Charge end voltage in mV
+    uint16_t v_load_off = 11700; //Low voltage disconnect voltage in mV
+    uint16_t v_load_on = 12300; //Low voltage disconnect enable voltage in mV
     uint16_t v_mpp_estimate = 0;
-    uint8_t step = 0x1; // Three point measurement step size
+    uint8_t step = 0x1;
     volatile uint16_t ticks = 0;
+    double ptc_resistance;
+    double resistor_voltage;
+    double temperature;
+    double temp_deviation;
+    
     
 
 /* ADC init */
@@ -158,17 +167,23 @@ void uart_puts(char *s)
 /* Low voltage disconnect */                    
 void low_voltage_disconnect (uint16_t voltage)
     {
-        // Battery voltage level that enables load in mV
-        if (voltage > 12300) 
+        /* Measure battery voltage */
+	v_out_adcval = ADC_Read_Avg(0, 32); 
+	v_out_value = (17.57 * v_out_adcval);
+	
+        // Exceeding v_load_on enables load
+	if (voltage > v_load_on) 
         { 
         PORTD = (1<<PD7) ;
         }
-         // Battery voltage level that enables load in mV     
-        if (voltage < 11800) 
+        
+        // Below v_load_off, disable load      
+        if (voltage < v_load_off) 
         {
         PORTD = (0<<PD7);
         }
-                    
+        
+        // Let the world know (if it has power to read the data ;)
         if (PORTD == (1<<PD7))
         {
         uart_puts("Load enabled\r\n");
@@ -203,71 +218,116 @@ ISR(TIMER2_OVF_vect)
       return;
       }
     
-
-                
-                
-    void serialdatareport (void)
+void read_temp_sens (void)
     {
-		    // Experiment: Prevent serial data from getting garbled.
-		    _delay_ms(20);
-		    // Prepare UART for sending data 
-		    uart_tx_enable();
-		    // Read ADC channel 2, calculate average from 10 readings
-                    solar_in_adcval = ADC_Read_Avg(2, 32);  
-                    v_in_value = (29.13 * solar_in_adcval);
-                    uart_puts("V_in ");
-		    // convert to ascii using 10 for radix 10 -> decimalsystem
-                    itoa( v_in_value, vo, 10 ); 
-                    uart_puts( vo );
-                    uart_puts(" mV""\r\n");
-                    
-                    v_out_adcval = ADC_Read_Avg(0, 32); 
-                    v_out_value = (17.57 * v_out_adcval);
-                    uart_puts("V_out "); 
-                    itoa( v_out_value, vo, 10 ); 
-                    uart_puts( vo );
-                    uart_puts(" mV""\r\n");
-                
-                    uart_puts ("New PWM value: 0x");
-                    itoa(OCR1A, vo, 16 );
-                    uart_puts (vo);
-                    uart_puts ("\r\n");      
-                    
-		    uart_tx_disable();
-		    
-                }
-                
+        /* Read voltage of ptc resistance in voltage divider
+         * Suggested PTC temperature sensor model:  KTY 81-210
+         * R2 = PTC resistance at 25 degrees Celsius 2000 Ohm +- 20 Ohm
+         * R1 = 1300 Ohm 
+         * R2 = R1 / ((3300mV / resistor_voltage) - 1) 
+         * all values in mV */
+        
+        
+        resistor_voltage = (ADC_Read_Avg(3, 8)) * 3.22265 ;
+        
+        if (resistor_voltage > 3200) {
+        uart_puts ("No temperature sensor available. \r\n");
+        return;
+        }
+        
+         uart_puts("PTC sensor voltage: ");
+	 itoa(resistor_voltage, vo, 10 );
+	 uart_puts(vo);
+	 uart_puts (" mV\r\n");
+         ptc_resistance = 1300 /  ((3300 / resistor_voltage) - 1);
 
-     void charge_end_limit (void) 
+         uart_puts("PTC sensor resistance: ");
+         itoa(ptc_resistance, vo, 10 );
+         uart_puts(vo);
+         uart_puts (" Ohm\r\n");
+       
+        // KTY 81-210 is not very accurate.
+        // Best accuracy at 40 degrees Celsius
+         
+        temperature = -30 + ((ptc_resistance - 1247) / 14.15);
+        
+        uart_puts("Temperature ");
+        dtostrf (temperature, 1, 1, vo);
+        uart_puts(vo);
+        uart_puts (" degrees Celsius\r\n");
+        
+        
+        
+    }
+
+                
+                
+void serialdatareport (void)
+    {
+        // Prevent serial data from getting garbled.
+        _delay_ms(20);
+        // Prepare UART for sending data 
+        uart_tx_enable();
+        // Read ADC channel 2, calculate average from 10 readings
+        solar_in_adcval = ADC_Read_Avg(2, 32);  
+        v_in_value = (29.13 * solar_in_adcval);
+        uart_puts("V_in ");
+        // convert to ascii using 10 for radix 10 -> decimalsystem
+        itoa( v_in_value, vo, 10 ); 
+        uart_puts( vo );
+        uart_puts(" mV""\r\n");
+
+        v_out_adcval = ADC_Read_Avg(0, 32); 
+        v_out_value = (17.57 * v_out_adcval);
+        uart_puts("V_out "); 
+        itoa( v_out_value, vo, 10 ); 
+        uart_puts( vo );
+        uart_puts(" mV""\r\n");
+
+        uart_puts ("New PWM value: 0x");
+        itoa(OCR1A, vo, 16 );
+        uart_puts (vo);
+        uart_puts ("\r\n");      
+
+        uart_tx_disable();
+        
+        read_temp_sens();
+
+        }
+        
+
+ void charge_end_limit (void) 
       {
-		 /* Stop charging at V_out_max */
-		 
-		 /* Measure battery voltage */
-		 v_out_adcval = ADC_Read_Avg(0, 32); 
-                 v_out_value = (17.57 * v_out_adcval);
-		 
-		 if (v_out_value > v_out_max) {
-		 uart_puts("V_out at charge end voltage > ");
-		 itoa(v_out_max, vo, 10 );
-		 uart_puts(vo);
-		 uart_puts ("mV\r\n");
-		   
-		 while (v_out_value > v_out_max) {
-		    OCR1A += 1;
-		    _delay_ms(200);
-		    v_out_adcval = ADC_Read_Avg(0, 32);
-		    v_out_value = (17.57 * v_out_adcval); 
-		    }
-		  _delay_ms(5000);
+	 /* Reduce charging current at V_out_max */
+	 
+	 /* Measure battery voltage */
+	 v_out_adcval = ADC_Read_Avg(0, 32); 
+         v_out_value = (17.57 * v_out_adcval);
+	 
+	 if (v_out_value > v_out_max) {
+	 uart_puts("V_out at charge end voltage > ");
+	 itoa(v_out_max, vo, 10 );
+	 uart_puts(vo);
+	 uart_puts ("mV\r\n");
+	 //OCR1A = 0x3FF;
+	   
+	 while (v_out_value > v_out_max) {
+	    OCR1A += 1;
+	    _delay_ms(10);
+	    v_out_adcval = ADC_Read_Avg(0, 32);
+	    v_out_value = (17.57 * v_out_adcval);
+	    }
+	  _delay_ms(5000);
 	    }
       }
+      
 
 
 int main(void)
 {
     
     // Set up GPIOs PD7 and PB1 as output ports
-    DDRD  = (1<<PD7);
+    DDRD = (1<<PD7);
     DDRB = (1<<PB1);
     
     // Enable ADC
@@ -302,9 +362,16 @@ int main(void)
 		 solar_in_adcval = ADC_Read_Avg(2, 32);  
                  v_in_value = (29.13 * solar_in_adcval);
 		
+		 /* If solar power is coming in and 
+		  * we didn't reach maximum output, 
+		  * run the MPP routine */
+		 
 		if ((v_out_value < v_in_value) && (v_out_value < (v_out_max - 100))) {
 		  
-		  OCR1A = 0x354;
+		  /* Measure solar panel open circuit voltage 
+		   * and calculate MPP point */
+		  
+		  OCR1A = 0x3FF;
 		  _delay_ms(400);
 		  solar_in_adcval = ADC_Read_Avg(2, 32);
 		  v_in_value = (29.13 * solar_in_adcval);
@@ -313,6 +380,8 @@ int main(void)
 		  uart_puts( vo );
 		  uart_puts(" mV""\r\n");
 		  v_mpp_estimate = v_in_value / 1.24;
+		  
+		  /* Set MPP to lowest possible point (PWM output of AVR = 0) */
 		  
 		  OCR1A = 0x0;
 		  _delay_ms(200);
@@ -323,15 +392,19 @@ int main(void)
 		  uart_puts( vo );
 		  uart_puts(" mV""\r\n");
 		  
+		  /* Report calculated MPP and ramp up PWM until 
+		   * we reach the calculated MPP input voltage */
+		  
 		  uart_puts("Calculated V_mpp "); 
 		  itoa( v_mpp_estimate, vo, 10 ); 
 		  uart_puts( vo );
 		  uart_puts(" mV""\r\n");
 		  
-		  while ((v_in_value < v_mpp_estimate) && (v_out_value < v_out_max))  {
+		  
+		  while ((v_in_value < v_mpp_estimate) && (v_out_value < (v_out_max - 30)))  {
 		    
 		    OCR1A += step;
-		    _delay_ms(1);
+		    _delay_ms(10);
 		    solar_in_adcval = ADC_Read_Avg(2, 32);
 		    v_in_value = (29.13 * solar_in_adcval);
 		    
@@ -339,15 +412,17 @@ int main(void)
 		    v_out_adcval = ADC_Read_Avg(0, 32); 
 		    v_out_value = (17.57 * v_out_adcval);
 		    }
-		
-		ticks = 0;
-		uart_puts("Going to sleep. MPP should be set");
-		uart_puts ("\r\n");
-		while (ticks != 200) {
-		      interrupt_based_sleep();
-		      charge_end_limit();
-		      ticks ++;
-                
+		    
+                        //charge_end_limit();
+                        ticks = 0;
+                        uart_puts("Going to sleep. MPP should be set");
+                        uart_puts ("\r\n");
+                        while (ticks != 200) {
+                            interrupt_based_sleep();
+                            _delay_ms(5);
+                            charge_end_limit();
+                            ticks ++;
+                    
 		}
 		  }
 		
@@ -362,9 +437,9 @@ int main(void)
                   }
                 
 		}
-		charge_end_limit();
+		//charge_end_limit();
 		serialdatareport();
-		_delay_ms(5000);
+		_delay_ms(500);
             }
 
    return 0; // never reached 

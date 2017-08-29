@@ -1,5 +1,17 @@
-update=Mo 27 Feb 2017 15:29:16 CET
+update=Do 03 Aug 2017 14:13:04 CEST
 last_client=kicad
+[general]
+version=1
+[schematic_editor]
+version=1
+PageLayoutDescrFile=
+PlotDirectoryName=
+SubpartIdSeparator=0
+SubpartFirstId=65
+NetFmtName=
+SpiceForceRefPrefix=0
+SpiceUseNetNumbers=0
+LabSize=60
 [eeschema]
 version=1
 LibDir=
@@ -35,15 +47,3 @@ LibName28=opto
 LibName29=atmel
 LibName30=contrib
 LibName31=valves
-[general]
-version=1
-[schematic_editor]
-version=1
-PageLayoutDescrFile=
-PlotDirectoryName=
-SubpartIdSeparator=0
-SubpartFirstId=65
-NetFmtName=
-SpiceForceRefPrefix=0
-SpiceUseNetNumbers=0
-LabSize=60
