@@ -43,19 +43,26 @@
     uint16_t v_out_adcval;
     uint16_t solar_in_adcval;
     uint16_t v_in_value;
-    uint16_t current_out_adcval;
     uint16_t v_out_value;
-    uint16_t u_zero_current;
     char vo[] = "";
-    uint8_t duty;
-    uint16_t upper_mpp_current_value;
-    uint16_t lower_mpp_current_value;
-    uint16_t medium_mpp_current_value;
     
-    /* Voltages are in mV */
-    uint16_t v_out_max = 14200; //Charge end voltage in mV
-    uint16_t v_load_off = 11700; //Low voltage disconnect voltage in mV
-    uint16_t v_load_on = 12300; //Low voltage disconnect enable voltage in mV
+    /* All Voltages are in mV */
+    
+    // v_out_max = Charge end voltage in mV at 25 degrees Celsius for sealed VRLA 12 V battery (Kung-Long, Panasonic and the like)
+    // Manufacturers recommend 14.7 V to 14.9 V charge end voltage for cyclic use, 13.6 V to 13.8 V for standby use
+    // As a solar system is a mix between cyclic and standby use, 14.15 V - 14.3 V charge end voltage is probably a good compromise.
+    
+    uint16_t v_out_max = 14200; 
+    
+    // v_load_off = Low voltage disconnect voltage in mV. Battery wear depends on depth-of-discharge. 11.7 Volt is moderate, discharging will stop at approximately 15% charge. For extended battery life, v_load_off can be increased to 12.1 V (~50% charge). Lead acid batteries have no memory effect.
+
+    uint16_t v_load_off = 11700; 
+    
+    // v_load_on = Low voltage disconnect enable voltage in mV. v_load_off and v_load_on are building a hysteresis so the system doesn't turn the load on and off repeatedly. 
+    
+    uint16_t v_load_on = 12300; 
+    
+    
     uint16_t v_mpp_estimate = 0;
     uint8_t step = 0x1;
     volatile uint16_t ticks = 0;
@@ -63,7 +70,9 @@
     double resistor_voltage;
     double temperature;
     double temp_deviation;
-    
+    uint16_t v_out_max_temp;
+    uint16_t old_mpp_pwm_val =0;
+    uint16_t count;
     
 
 /* ADC init */
@@ -164,12 +173,11 @@ void uart_puts(char *s)
         }
     }
     
+
+    
 /* Low voltage disconnect */                    
 void low_voltage_disconnect (uint16_t voltage)
     {
-        /* Measure battery voltage */
-	v_out_adcval = ADC_Read_Avg(0, 32); 
-	v_out_value = (17.57 * v_out_adcval);
 	
         // Exceeding v_load_on enables load
 	if (voltage > v_load_on) 
@@ -217,7 +225,23 @@ ISR(TIMER2_OVF_vect)
       {
       return;
       }
+      
+/* Measure battery voltage */
+ uint16_t measure_v_out(void) {
+	v_out_adcval = ADC_Read_Avg(0, 32); 
+	v_out_value = (17.57 * v_out_adcval);
+        return v_out_value;
+}
+
+/* Measure solar input voltage */
+uint16_t measure_v_in(void) {
+        // Read ADC channel 2, calculate average from 10 readings
+        solar_in_adcval = ADC_Read_Avg(2, 32);  
+        v_in_value = (29.13 * solar_in_adcval);
+        return v_in_value;
     
+}
+
 void read_temp_sens (void)
     {
         /* Read voltage of ptc resistance in voltage divider
@@ -256,6 +280,24 @@ void read_temp_sens (void)
         uart_puts(vo);
         uart_puts (" degrees Celsius\r\n");
         
+        /* Calculate and adjust charge end voltage depending on 
+        battery temperature for voltage regulated lead acid battery chemistry 
+        Correction factor 5 mV per cell for one degree Celsius 
+        12 V lead acid type has 6 cells */
+        
+        if (temperature > 25.00) {
+        v_out_max_temp = v_out_max - ((temperature - 25.00) * 30);
+        }
+        
+        if (temperature < 25.00) {
+        v_out_max_temp = v_out_max + ((25.00 - temperature) * 30);
+        }
+        
+        uart_puts("Temperature adjusted charge end voltage: ");
+        itoa(v_out_max_temp, vo, 10 );
+        uart_puts(vo);
+        uart_puts (" mV\r\n");
+        
         
         
     }
@@ -268,17 +310,14 @@ void serialdatareport (void)
         _delay_ms(20);
         // Prepare UART for sending data 
         uart_tx_enable();
-        // Read ADC channel 2, calculate average from 10 readings
-        solar_in_adcval = ADC_Read_Avg(2, 32);  
-        v_in_value = (29.13 * solar_in_adcval);
-        uart_puts("V_in ");
+        measure_v_in();
         // convert to ascii using 10 for radix 10 -> decimalsystem
+        uart_puts("V_in ");
         itoa( v_in_value, vo, 10 ); 
         uart_puts( vo );
         uart_puts(" mV""\r\n");
 
-        v_out_adcval = ADC_Read_Avg(0, 32); 
-        v_out_value = (17.57 * v_out_adcval);
+        measure_v_out();
         uart_puts("V_out "); 
         itoa( v_out_value, vo, 10 ); 
         uart_puts( vo );
@@ -298,27 +337,48 @@ void serialdatareport (void)
 
  void charge_end_limit (void) 
       {
-	 /* Reduce charging current at V_out_max */
+	 /* Reduce charging current at V_out_max_temp */
 	 
-	 /* Measure battery voltage */
-	 v_out_adcval = ADC_Read_Avg(0, 32); 
-         v_out_value = (17.57 * v_out_adcval);
+         measure_v_out();
 	 
-	 if (v_out_value > v_out_max) {
-	 uart_puts("V_out at charge end voltage > ");
-	 itoa(v_out_max, vo, 10 );
-	 uart_puts(vo);
-	 uart_puts ("mV\r\n");
-	 //OCR1A = 0x3FF;
-	   
-	 while (v_out_value > v_out_max) {
-	    OCR1A += 1;
-	    _delay_ms(10);
-	    v_out_adcval = ADC_Read_Avg(0, 32);
-	    v_out_value = (17.57 * v_out_adcval);
-	    }
-	  _delay_ms(5000);
-	    }
+	 if (v_out_value > (v_out_max_temp + 20)) {
+             
+             OCR1A = old_mpp_pwm_val;
+             count = 0;
+             uart_puts ("In charge end loop \r\n"); 
+             
+             while(count < 65535) {
+                 measure_v_out();
+                 if (v_out_value > v_out_max_temp && OCR1A < 0x3FF ){
+                    //uart_puts ("PWM UP by 1\r\n");
+                    OCR1A += 0x1;}
+                  
+                if(v_out_value < v_out_max_temp && OCR1A > 0x1) {
+                   //uart_puts ("PWM DOWN by 1\r\n"); 
+                   OCR1A -= 0x1;}
+                  
+                  count++;
+                  _delay_ms(1);
+             }
+            
+            uart_puts("V_out "); 
+            itoa( v_out_value, vo, 10 ); 
+            uart_puts( vo );
+            uart_puts(" mV""\r\n");            
+            
+            uart_puts("V_out at charge end voltage  ");
+            itoa(v_out_max_temp, vo, 10 );
+            uart_puts(vo);
+            uart_puts ("mV\r\n");
+            _delay_ms(1000);
+            
+            old_mpp_pwm_val = OCR1A;
+            uart_puts("old_mpp_pwm_val "); 
+            itoa(OCR1A, vo, 16 );
+            uart_puts (vo);
+            uart_puts ("\r\n");
+    
+      }
       }
       
 
@@ -344,10 +404,12 @@ int main(void)
     
     _delay_ms(200);
     
+    v_out_max_temp = v_out_max;
+    
 
-
+        /* Main program loop */
         while (1) {
-	  
+                 measure_v_out();
                  low_voltage_disconnect(v_out_value);
 		 uart_puts("Parsed low voltage disconnect routine"); 
 		 uart_puts ("\r\n");
@@ -358,23 +420,20 @@ int main(void)
 		/* Check if there is actually power from the solar panel.
 		 * If not, sleep for a while */
 		/* First, measure solar input voltage */
-		
-		 solar_in_adcval = ADC_Read_Avg(2, 32);  
-                 v_in_value = (29.13 * solar_in_adcval);
+		measure_v_in();
 		
 		 /* If solar power is coming in and 
 		  * we didn't reach maximum output, 
 		  * run the MPP routine */
 		 
-		if ((v_out_value < v_in_value) && (v_out_value < (v_out_max - 100))) {
+		if ((v_out_value < v_in_value) && (v_out_value < (v_out_max_temp - 20))) {
 		  
 		  /* Measure solar panel open circuit voltage 
 		   * and calculate MPP point */
 		  
 		  OCR1A = 0x3FF;
 		  _delay_ms(400);
-		  solar_in_adcval = ADC_Read_Avg(2, 32);
-		  v_in_value = (29.13 * solar_in_adcval);
+                  measure_v_in();
 		  uart_puts("V_in_idle "); 
 		  itoa( v_in_value, vo, 10 ); 
 		  uart_puts( vo );
@@ -384,9 +443,9 @@ int main(void)
 		  /* Set MPP to lowest possible point (PWM output of AVR = 0) */
 		  
 		  OCR1A = 0x0;
+                  charge_end_limit();
 		  _delay_ms(200);
-		  solar_in_adcval = ADC_Read_Avg(2, 32);
-		  v_in_value = (29.13 * solar_in_adcval);
+                  measure_v_in();
 		  uart_puts("Minimum V_mpp "); 
 		  itoa( v_in_value, vo, 10 ); 
 		  uart_puts( vo );
@@ -399,27 +458,23 @@ int main(void)
 		  itoa( v_mpp_estimate, vo, 10 ); 
 		  uart_puts( vo );
 		  uart_puts(" mV""\r\n");
+		  measure_v_in();
+                  measure_v_out();
 		  
-		  
-		  while ((v_in_value < v_mpp_estimate) && (v_out_value < (v_out_max - 30)))  {
+		  while ((v_in_value < v_mpp_estimate) && (v_out_value < (v_out_max_temp - 150)))  {
 		    
 		    OCR1A += step;
 		    _delay_ms(10);
-		    solar_in_adcval = ADC_Read_Avg(2, 32);
-		    v_in_value = (29.13 * solar_in_adcval);
-		    
-		    /* Measure battery voltage */
-		    v_out_adcval = ADC_Read_Avg(0, 32); 
-		    v_out_value = (17.57 * v_out_adcval);
+                    measure_v_in();
+                    measure_v_out();
 		    }
 		    
-                        //charge_end_limit();
                         ticks = 0;
-                        uart_puts("Going to sleep. MPP should be set");
+                        uart_puts("MPP should be set");
                         uart_puts ("\r\n");
-                        while (ticks != 200) {
+                        while (ticks != 100) {
                             interrupt_based_sleep();
-                            _delay_ms(5);
+                            _delay_ms(20);
                             charge_end_limit();
                             ticks ++;
                     
@@ -437,7 +492,8 @@ int main(void)
                   }
                 
 		}
-		//charge_end_limit();
+		charge_end_limit();
+                
 		serialdatareport();
 		_delay_ms(500);
             }
